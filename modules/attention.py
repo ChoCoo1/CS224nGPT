@@ -34,6 +34,7 @@ class CausalSelfAttention(nn.Module):
   def attention(self, key, query, value, attention_mask):
 
     ### YOUR CODE HERE
+    
     raise NotImplementedError
 
 
