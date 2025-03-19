@@ -1,5 +1,6 @@
+import math
 import torch
-
+import torch.nn.functional as F
 from einops import rearrange
 from torch import nn
 
@@ -32,25 +33,48 @@ class CausalSelfAttention(nn.Module):
     return proj
 
   def attention(self, key, query, value, attention_mask):
-
-    ### YOUR CODE HERE
+    """
+    Implements multi-head attention computation.
     
-    raise NotImplementedError
-
+    key, query, value: shape [bs, num_attention_heads, seq_len, attention_head_size]
+    attention_mask: shape [bs, 1, 1, seq_len]
+    
+    Returns the attended values after applying attention mechanism.
+    """
+    d_k = query.size(-1)  # attention_head_size
+    
+    # Calculate the attention scores (scaled dot-product attention)
+    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)  # [bs, num_attention_heads, seq_len, seq_len]
+    
+    # Apply the attention mask (make sure the attention only attends to valid tokens)
+    if attention_mask is not None:
+      scores = scores.masked_fill(attention_mask == 0, -1e9)
+    
+    # Apply softmax to get the attention weights (probabilities)
+    attn_weights = F.softmax(scores, dim=-1)  # [bs, num_attention_heads, seq_len, seq_len]
+    
+    # Apply dropout on attention weights (to prevent overfitting)
+    attn_weights = self.dropout(attn_weights)
+    
+    # Multiply the attention weights with the value tensor to get the attended output
+    attn_output = torch.matmul(attn_weights, value)  # [bs, num_attention_heads, seq_len, attention_head_size]
+    
+    # Rearrange the output to have shape [bs, seq_len, hidden_size]
+    attn_output = rearrange(attn_output, 'b h t d -> b t (h d)')  # [bs, seq_len, hidden_size]
+    return attn_output
 
   def forward(self, hidden_states, attention_mask):
-    """
-    hidden_states: [bs, seq_len, hidden_state]
-    attention_mask: [bs, 1, 1, seq_len]
-    output: [bs, seq_len, hidden_state]
-    """
-    # First, we have to generate the key, value, query for each token for multi-head attention
-    # using self.transform (more details inside the function).
-    # Size of *_layer is [bs, num_attention_heads, seq_len, attention_head_size].
-    key_layer = self.transform(hidden_states, self.key)
-    value_layer = self.transform(hidden_states, self.value)
-    query_layer = self.transform(hidden_states, self.query)
-    
-    # Calculate the multi-head attention.
-    attn_value = self.attention(key_layer, query_layer, value_layer, attention_mask)
-    return attn_value
+      """
+      hidden_states: [bs, seq_len, hidden_state]
+      attention_mask: [bs, 1, 1, seq_len]
+      output: [bs, seq_len, hidden_state]
+      """
+      # Generate the key, value, query for each token using the transform function.
+      # The size of key_layer, value_layer, query_layer is [bs, num_attention_heads, seq_len, attention_head_size].
+      key_layer = self.transform(hidden_states, self.key)
+      value_layer = self.transform(hidden_states, self.value)
+      query_layer = self.transform(hidden_states, self.query)
+      
+      # Calculate the multi-head attention output.
+      attn_value = self.attention(key_layer, query_layer, value_layer, attention_mask)
+      return attn_value
