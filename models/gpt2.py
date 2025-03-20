@@ -50,16 +50,22 @@ class GPT2Model(GPTPreTrainedModel):
     inputs_embeds = None
 
     ### YOUR CODE HERE
-    raise NotImplementedError
+    # 获取词嵌入
+    inputs_embeds = self.word_embedding(input_ids)
 
-
+    # 获取位置嵌入
     pos_ids = self.position_ids[:, :seq_length]
     pos_embeds = None
 
     ### TODO: Use pos_ids to get position embedding from self.pos_embedding into pos_embeds.
     ###       Then, add two embeddings together; then apply dropout and return.
     ### YOUR CODE HERE
-    raise NotImplementedError
+    pos_embeds = self.pos_embedding(pos_ids)
+
+    # 合并词嵌入和位置嵌入，并应用 dropout
+    embeddings = inputs_embeds + pos_embeds
+    embeddings = self.embed_dropout(embeddings)
+    return embeddings
 
 
   def encode(self, hidden_states, attention_mask):
@@ -106,7 +112,10 @@ class GPT2Model(GPTPreTrainedModel):
       return hidden_state(s) * E^T
     """
     ### YOUR CODE HERE
-    raise NotImplementedError
+    print(f"word_embedding.weight.shape: {self.word_embedding.weight.shape}")
+    print(f"hidden_state.shape: {hidden_state.shape}")
+    logits = torch.matmul(hidden_state, self.word_embedding.weight.transpose(0, 1))
+    return logits
 
 
   @classmethod
@@ -120,32 +129,32 @@ class GPT2Model(GPTPreTrainedModel):
     our_model.pos_embedding.load_state_dict(gpt_model.wpe.state_dict())
 
     for i in range(l):
-      l = our_model.gpt_layers[i]
+      layer = our_model.gpt_layers[i]
       # Remap the Q,K,V weights from a conv1d to 3 linear projections
-      l.self_attention.query.weight.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.weight'][:, :d].T
-      l.self_attention.query.bias.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.bias'][:d]
-      l.self_attention.key.weight.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.weight'][:, d:d*2].T
-      l.self_attention.key.bias.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.bias'][d:d*2]
-      l.self_attention.value.weight.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.weight'][:, d*2:].T
-      l.self_attention.value.bias.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.bias'][d*2:]
+      layer.self_attention.query.weight.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.weight'][:, :d].T
+      layer.self_attention.query.bias.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.bias'][:d]
+      layer.self_attention.key.weight.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.weight'][:, d:d*2].T
+      layer.self_attention.key.bias.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.bias'][d:d*2]
+      layer.self_attention.value.weight.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.weight'][:, d*2:].T
+      layer.self_attention.value.bias.data = gpt_model.state_dict()[f'h.{i}.attn.c_attn.bias'][d*2:]
 
       # Remap final dense layer in MHA.
-      l.attention_dense.weight.data = gpt_model.state_dict()[f'h.{i}.attn.c_proj.weight'].T
-      l.attention_dense.bias.data = gpt_model.state_dict()[f'h.{i}.attn.c_proj.bias']
+      layer.attention_dense.weight.data = gpt_model.state_dict()[f'h.{i}.attn.c_proj.weight'].T
+      layer.attention_dense.bias.data = gpt_model.state_dict()[f'h.{i}.attn.c_proj.bias']
 
       # Remap attention layer norm.
-      l.attention_layer_norm.weight.data = gpt_model.state_dict()[f'h.{i}.ln_1.weight']
-      l.attention_layer_norm.bias.data = gpt_model.state_dict()[f'h.{i}.ln_1.bias']
+      layer.attention_layer_norm.weight.data = gpt_model.state_dict()[f'h.{i}.ln_1.weight']
+      layer.attention_layer_norm.bias.data = gpt_model.state_dict()[f'h.{i}.ln_1.bias']
 
       # Remap post-attention MLP layers.
-      l.interm_dense.weight.data = gpt_model.state_dict()[f'h.{i}.mlp.c_fc.weight'].T
-      l.interm_dense.bias.data = gpt_model.state_dict()[f'h.{i}.mlp.c_fc.bias']
-      l.out_dense.weight.data = gpt_model.state_dict()[f'h.{i}.mlp.c_proj.weight'].T
-      l.out_dense.bias.data = gpt_model.state_dict()[f'h.{i}.mlp.c_proj.bias']
+      layer.interm_dense.weight.data = gpt_model.state_dict()[f'h.{i}.mlp.c_fc.weight'].T
+      layer.interm_dense.bias.data = gpt_model.state_dict()[f'h.{i}.mlp.c_fc.bias']
+      layer.out_dense.weight.data = gpt_model.state_dict()[f'h.{i}.mlp.c_proj.weight'].T
+      layer.out_dense.bias.data = gpt_model.state_dict()[f'h.{i}.mlp.c_proj.bias']
 
       # Remap second layer norm weights.
-      l.out_layer_norm.weight.data = gpt_model.state_dict()[f'h.{i}.ln_2.weight']
-      l.out_layer_norm.bias.data = gpt_model.state_dict()[f'h.{i}.ln_2.bias']
+      layer.out_layer_norm.weight.data = gpt_model.state_dict()[f'h.{i}.ln_2.weight']
+      layer.out_layer_norm.bias.data = gpt_model.state_dict()[f'h.{i}.ln_2.bias']
 
     # Remap the final layer norm values.
     our_model.final_layer_norm.weight.data = gpt_model.state_dict()['ln_f.weight']

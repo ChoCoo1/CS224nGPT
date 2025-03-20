@@ -41,21 +41,22 @@ class CausalSelfAttention(nn.Module):
     
     Returns the attended values after applying attention mechanism.
     """
-    d_k = query.size(-1)  # attention_head_size
+    d_k = key.size(-1)  # attention_head_size
     
     # Calculate the attention scores (scaled dot-product attention)
     scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)  # [bs, num_attention_heads, seq_len, seq_len]
     
     # Apply the attention mask (make sure the attention only attends to valid tokens)
+    # scores = scores + attention_mask
     if attention_mask is not None:
-      scores = scores.masked_fill(attention_mask == 0, -1e9)
+        scores = scores.masked_fill(attention_mask == 0, -1e9)
     
     # Apply softmax to get the attention weights (probabilities)
     attn_weights = F.softmax(scores, dim=-1)  # [bs, num_attention_heads, seq_len, seq_len]
-    
-    # Apply dropout on attention weights (to prevent overfitting)
+
+    # Apply dropout to the attention weights
     attn_weights = self.dropout(attn_weights)
-    
+
     # Multiply the attention weights with the value tensor to get the attended output
     attn_output = torch.matmul(attn_weights, value)  # [bs, num_attention_heads, seq_len, attention_head_size]
     

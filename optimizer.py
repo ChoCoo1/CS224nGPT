@@ -61,7 +61,46 @@ class AdamW(Optimizer):
                 ###
                 ###       Refer to the default project handout for more details.
                 ### YOUR CODE HERE
-                raise NotImplementedError
 
+                beta1, beta2 = group["betas"]
+                eps = group["eps"]
+                weight_decay = group["weight_decay"]
+                correct_bias = group["correct_bias"]
 
+                # Initialize state variables for each parameter if not present
+                if len(state) == 0:
+                    state["step"] = 0
+                    state["exp_avg"] = torch.zeros_like(p.data)
+                    state["exp_avg_sq"] = torch.zeros_like(p.data)
+
+                # Get the first and second moment estimates
+                exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+                state["step"] += 1
+                t = state["step"]
+
+                # Update the first moment (exp_avg) and second moment (exp_avg_sq)
+                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
+
+                if correct_bias:
+                    # Apply bias correction to the first and second moment estimates
+                    bias_correction1 = 1 - beta1 ** t
+                    bias_correction2 = 1 - beta2 ** t
+
+                    # Corrected step size
+                    step_size = alpha * math.sqrt(bias_correction2) / bias_correction1
+                    denom = exp_avg_sq.sqrt().add_(eps)
+                    update = exp_avg / denom
+                else:
+                    # If no bias correction, simply use the uncorrected step size
+                    step_size = alpha
+                    denom = exp_avg_sq.sqrt().add_(eps)
+                    update = exp_avg / denom
+
+                # Update the parameters
+                p.data.add_(update, alpha=-step_size)
+
+                # Apply weight decay after the parameter update (AdamW specific)
+                if weight_decay > 0:
+                    p.data.add_(p.data, alpha=-alpha * weight_decay)
         return loss
