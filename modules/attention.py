@@ -49,7 +49,7 @@ class CausalSelfAttention(nn.Module):
     # Apply the attention mask (make sure the attention only attends to valid tokens)
     # scores = scores + attention_mask
     if attention_mask is not None:
-        scores = scores.masked_fill(attention_mask == 0, -1e9)
+        scores = scores + attention_mask
     
     # Apply softmax to get the attention weights (probabilities)
     attn_weights = F.softmax(scores, dim=-1)  # [bs, num_attention_heads, seq_len, seq_len]

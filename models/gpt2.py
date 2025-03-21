@@ -77,7 +77,9 @@ class GPT2Model(GPTPreTrainedModel):
     # Returns extended_attention_mask of size [batch_size, 1, 1, seq_len].
     # Distinguishes between non-padding tokens (with a value of 0) and padding tokens
     # (with a value of a large negative number).
-    extended_attention_mask: torch.Tensor = get_extended_attention_mask(attention_mask, self.dtype)
+    extended_attention_mask: torch.Tensor = get_extended_attention_mask(attention_mask, self.dtype, causal=True)
+    # from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa
+    # extended_attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(attention_mask,input_shape=attention_mask.shape, inputs_embeds=hidden_states, past_key_values_length=0)
 
     # Pass the hidden states through the encoder layers.
     for i, layer_module in enumerate(self.gpt_layers):

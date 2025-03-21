@@ -350,11 +350,35 @@ def get_parameter_dtype(parameter: Union[nn.Module]):
     return first_tuple[1].dtype
 
 
-def get_extended_attention_mask(attention_mask: Tensor, dtype) -> Tensor:
-  # attention_mask [batch_size, seq_length]
-  assert attention_mask.dim() == 2
-  # [batch_size, 1, 1, seq_length] for multi-head attention
-  extended_attention_mask = attention_mask[:, None, None, :]
-  extended_attention_mask = extended_attention_mask.to(dtype=dtype)  # fp16 compatibility
-  extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-  return extended_attention_mask
+def get_extended_attention_mask(attention_mask: Tensor, dtype, causal: bool = False) -> Tensor:
+    """
+    构造注意力mask
+    Args:
+        attention_mask: [batch_size, seq_length]，其中1表示有效token，0表示padding token
+        dtype: 数据类型（例如torch.float32），用于转换mask的数据类型
+        causal: 如果为True，则生成因果mask（使得token只能关注当前及之前的token）
+    Returns:
+        extended_attention_mask:
+            如果 causal==False, 则形状为 [batch_size, 1, 1, seq_length]（仅用于屏蔽padding）
+            如果 causal==True, 则形状为 [batch_size, 1, seq_length, seq_length]（同时考虑因果性和padding）
+    """
+    batch_size, seq_length = attention_mask.size()
+    # 先构造padding mask，形状为 [batch_size, 1, 1, seq_length]
+    padding_mask = attention_mask[:, None, None, :].to(dtype=dtype)
+    padding_mask = (1.0 - padding_mask) * -10000.0  # 有效token为0，无效token为-10000
+    
+    if not causal:
+        return padding_mask
+    else:
+        # 构造因果mask。这里先生成一个下三角矩阵，形状为 [seq_length, seq_length]，
+        # 下三角为1表示允许关注，之后转换为注意力mask格式（1->0，0->-10000）
+        causal_mask = torch.tril(torch.ones((seq_length, seq_length), device=attention_mask.device)).to(dtype=dtype)
+        causal_mask = (1.0 - causal_mask) * -10000.0  # 允许关注的部分为0，不允许关注的部分为-10000
+        
+        # causal_mask原始形状为 [seq_length, seq_length]，扩展batch维度得到 [1, seq_length, seq_length]
+        causal_mask = causal_mask.unsqueeze(0)
+        # 将 causal_mask 与 padding_mask 合并。
+        # padding_mask: [batch_size, 1, 1, seq_length]，因果mask需要扩展到 [batch_size, 1, seq_length, seq_length]，
+        # 注意这里利用广播规则将padding mask作用于所有query位置。
+        extended_attention_mask = causal_mask + padding_mask
+        return extended_attention_mask
