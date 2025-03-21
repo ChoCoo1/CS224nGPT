@@ -6,6 +6,7 @@ Trains and evaluates GPT2SentimentClassifier on SST and CFIMDB
 
 import random, numpy as np, argparse
 from types import SimpleNamespace
+
 import csv
 
 import torch
@@ -19,6 +20,7 @@ from optimizer import AdamW
 from tqdm import tqdm
 
 TQDM_DISABLE = False
+torch.serialization.add_safe_globals([SimpleNamespace])
 
 
 # Fix the random seed.
@@ -55,7 +57,10 @@ class GPT2SentimentClassifier(torch.nn.Module):
 
     ### TODO: Create any instance variables you need to classify the sentiment of BERT embeddings.
     ### YOUR CODE HERE
-    raise NotImplementedError
+    # 新增分类器头，将 GPT2 输出的隐藏向量映射到情感类别上
+    self.dropout = torch.nn.Dropout(p=config.hidden_dropout_prob)
+    self.classifier = torch.nn.Linear(config.hidden_size, config.num_labels)
+    # raise NotImplementedError
 
 
   def forward(self, input_ids, attention_mask):
@@ -65,6 +70,31 @@ class GPT2SentimentClassifier(torch.nn.Module):
     ###       HINT: You should consider what is an appropriate return value given that
     ###       the training loop currently uses F.cross_entropy as the loss function.
     ### YOUR CODE HERE
+    '''
+    输入:
+      input_ids: [batch_size, seq_len]
+      attention_mask: [batch_size, seq_len]
+    输出:
+      logits: [batch_size, num_labels]
+    '''
+    # 获得 GPT2 模型的输出，假设输出维度为 [batch_size, seq_len, hidden_size]
+    outputs = self.gpt(input_ids, attention_mask)
+    hidden_states = outputs["last_hidden_state"]  # [batch_size, seq_len, hidden_size]
+
+    # 使用 attention_mask 找到每个句子中最后一个非 padding token 的位置
+    # 计算每个样本的有效 token 数（假设 pad token 的 mask 值为 0）
+    seq_lengths = attention_mask.sum(dim=1)  # [batch_size]
+    
+    # 利用索引操作，提取每个样本最后一个非 padding token 的隐藏向量
+    # 注意：seq_lengths 中存储的是实际 token 数，因此索引时要减 1
+    batch_indices = torch.arange(hidden_states.size(0), device=hidden_states.device)
+    last_token_embeddings = hidden_states[batch_indices, seq_lengths - 1, :]  # [batch_size, hidden_size]
+
+    last_token_embeddings = self.dropout(last_token_embeddings)
+
+    # Pass the last token's representation through the classifier
+    logits = self.classifier(last_token_embeddings)
+    return logits
     raise NotImplementedError
 
 
@@ -308,7 +338,7 @@ def train(args):
 def test(args):
   with torch.no_grad():
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-    saved = torch.load(args.filepath)
+    saved = torch.load(args.filepath,weights_only=False)
     config = saved['model_config']
     model = GPT2SentimentClassifier(config)
     model.load_state_dict(saved['model'])
